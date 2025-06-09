@@ -2,25 +2,33 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"sync"
 
+	firebase "firebase.google.com/go/v4"
+	"firebase.google.com/go/v4/auth"
 	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/websocket"
 	"github.com/joho/godotenv"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"google.golang.org/api/option"
 )
 
 var (
-    ctx         = context.Background()
+    ctx = context.Background()
     redisClient *redis.Client
-    upgrader    = websocket.Upgrader{
+    upgrader = websocket.Upgrader{
         CheckOrigin: func(r *http.Request) bool { return true },
     }
-    clients     = make(map[*websocket.Conn]bool)
+    clients = make(map[*websocket.Conn]bool)
     clientsLock sync.Mutex
+    authClient *auth.Client
+	userCollection *mongo.Collection
 )
 
 func main() {
@@ -33,12 +41,132 @@ func main() {
 	opt, _ := redis.ParseURL(redisURI)
     redisClient = redis.NewClient(opt)
 
-    // Start listening to Redis pub/sub
+    initFirebase()
+    initMongo()
+
     go startRedisSubscriber()
 
-    http.HandleFunc("/ws", wsHandler)
+    http.HandleFunc("/ws", withCORS(wsHandler))
+    http.HandleFunc("/auth", withCORS(authHandler))
+    http.HandleFunc("/register", withCORS(registerHandler))
     fmt.Println("WebSocket server running at :8080/ws")
     log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+func withCORS(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			// Set CORS headers
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		}
+
+		// Handle preflight
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Call the actual handler
+		h(w, r)
+	}
+}
+
+func initFirebase() {
+	ctx := context.Background()
+    firebaseSecret := os.Getenv("FIREBASE_SECRET")
+	opt := option.WithCredentialsJSON([]byte(firebaseSecret))
+
+	app, err := firebase.NewApp(ctx, nil, opt)
+	if err != nil {
+		log.Fatalf("error initializing Firebase app: %v\n", err)
+	}
+
+	authClient, err = app.Auth(ctx)
+	if err != nil {
+		log.Fatalf("error getting Auth client: %v\n", err)
+	}
+}
+
+func initMongo() {
+    mongoURI := os.Getenv("MONGO_URI")
+	clientOptions := options.Client().ApplyURI(mongoURI)
+	client, err := mongo.Connect(context.Background(), clientOptions)
+	if err != nil {
+		log.Fatalf("MongoDB connection error: %v\n", err)
+	}
+	userCollection = client.Database("gameparrot").Collection("User")
+}
+
+func registerHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDToken string `json:"idToken"`
+	}
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil || req.IDToken == "" {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	ctx := context.Background()
+	token, err := authClient.VerifyIDToken(ctx, req.IDToken)
+	if err != nil {
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		return
+	}
+
+	uid := token.UID
+	email := token.Claims["email"]
+    println(uid, email)
+
+	// Check if user already exists
+	var existing map[string]interface{}
+	err = userCollection.FindOne(ctx, map[string]interface{}{"uid": uid}).Decode(&existing)
+    log.Printf("Object: %+v\n", err)
+	if err == mongo.ErrNoDocuments {
+		// New user — insert
+		newUser := map[string]interface{}{
+			"uid":   uid,
+			"email": email,
+			"createdAt": token.IssuedAt,
+		}
+		_, err := userCollection.InsertOne(ctx, newUser)
+		if err != nil {
+			http.Error(w, "Failed to insert user", http.StatusInternalServerError)
+			return
+		}
+		fmt.Fprintln(w, "User registered successfully")
+		return
+	}
+
+	// Already exists
+	fmt.Fprintln(w, "User already exists")
+}
+
+func authHandler(w http.ResponseWriter, r *http.Request) {
+    var req struct {
+        IDToken string `json:"idToken"`
+    }
+
+    err := json.NewDecoder(r.Body).Decode(&req)
+    if err != nil {
+        http.Error(w, "Invalid request", http.StatusBadRequest)
+        return
+    }
+
+    ctx := context.Background()
+    token, err := authClient.VerifyIDToken(ctx, req.IDToken)
+    if err != nil {
+        http.Error(w, "Invalid token", http.StatusUnauthorized)
+        return
+    }
+
+    uid := token.UID
+    w.Write([]byte(uid));
 }
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
