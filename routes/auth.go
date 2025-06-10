@@ -3,8 +3,12 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"gameparrot_backend/firebase"
+	"gameparrot_backend/redis"
+	"log"
 	"net/http"
+	"time"
 )
 
 func AuthHandler(w http.ResponseWriter, r *http.Request) {
@@ -26,5 +30,11 @@ func AuthHandler(w http.ResponseWriter, r *http.Request) {
     }
 
     uid := token.UID
+    key := fmt.Sprintf("user:%s:online", uid)
+	redisErr := redis.RedisClient.Set(context.Background(), key, 1, time.Minute*10).Err()
+    if redisErr != nil {
+        log.Println("Failed to set user online status in Redis:", err)
+    }
+    
     w.Write([]byte(uid));
 }

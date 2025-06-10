@@ -12,8 +12,8 @@ import (
 
 var (
 	RedisClient *redis.Client
-	clients    = make(map[*websocket.Conn]bool)
-	clientsMux sync.Mutex
+	Clients = make(map[*websocket.Conn]string)
+	ClientsMux sync.Mutex
 )
 
 
@@ -24,25 +24,24 @@ func InitRedis() {
 }
 
 func StartRedisSubscriber() {
-    sub := RedisClient.Subscribe(context.Background(), "game_channel")
-    ch := sub.Channel()
+    message_sub := RedisClient.Subscribe(context.Background(), "message_channel")
+    message_ch := message_sub.Channel()
 	
-
-    for msg := range ch {
-        broadcast([]byte(msg.Payload))
+    for msg := range message_ch {
+        broadcastMessage([]byte(msg.Payload))
     }
 }
 
-func broadcast(message []byte) {
-    clientsMux.Lock()
-    defer clientsMux.Unlock()
+func broadcastMessage(message []byte) {
+    ClientsMux.Lock()
+    defer ClientsMux.Unlock()
 
-    for conn := range clients {
+    for conn := range Clients {
         err := conn.WriteMessage(websocket.TextMessage, message)
         if err != nil {
             log.Println("Broadcast error:", err)
             conn.Close()
-            delete(clients, conn)
+            delete(Clients, conn)
         }
     }
 }
