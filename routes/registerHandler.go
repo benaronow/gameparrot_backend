@@ -9,7 +9,7 @@ import (
 )
 
 func RegisterHandler(w http.ResponseWriter, r *http.Request) {
-	var token = getFBToken(w, r)
+	token := getFBToken(w, r)
 
 	var existing map[string]any
 	err := mongoClient.UserCollection.FindOne(ctx, map[string]any{"uid": token.UID}).Decode(&existing)

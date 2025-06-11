@@ -53,12 +53,19 @@ func broadcastMessage(message []byte) {
     ClientsMux.Lock()
     defer ClientsMux.Unlock()
 
+    var msgJson models.Message
+	if err := json.Unmarshal(message, &msgJson); err != nil {
+		log.Println("JSON decode error:", err)
+	}
+
     for conn := range MessageClients {
-        err := conn.WriteMessage(websocket.TextMessage, message)
-        if err != nil {
-            log.Println("Broadcast error:", err)
-            conn.Close()
-            delete(MessageClients, conn)
+        if (MessageClients[conn] == msgJson.To) {
+            err := conn.WriteMessage(websocket.TextMessage, []byte(msgJson.Message))
+            if err != nil {
+                log.Println("Broadcast error:", err)
+                conn.Close()
+                delete(MessageClients, conn)
+            }
         }
     }
 }

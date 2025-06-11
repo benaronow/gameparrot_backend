@@ -9,7 +9,7 @@ import (
 )
 
 func AuthHandler(w http.ResponseWriter, r *http.Request) {
-    var token = getFBToken(w, r)
+    token := getFBToken(w, r)
 
     key := fmt.Sprintf("user:%s:online", token.UID)
 	redisErr := redis.RedisClient.Set(ctx, key, 1, time.Minute*10).Err()

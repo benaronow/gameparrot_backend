@@ -11,11 +11,7 @@ import (
 )
 
 func StatusHandler(w http.ResponseWriter, r *http.Request) {
-    conn, err := upgrader.Upgrade(w, r, nil)
-    if err != nil {
-        log.Println("WS upgrade error:", err)
-        return
-    }
+    conn := getConn(w, r)
 
     _, msg, err := conn.ReadMessage()
     if err != nil {
@@ -23,11 +19,12 @@ func StatusHandler(w http.ResponseWriter, r *http.Request) {
         conn.Close()
         return
     }
-
     userID := string(msg)
+
     redis.ClientsMux.Lock()
     redis.StatusClients[conn] = userID
     redis.ClientsMux.Unlock()
+    log.Println("Status client connected")
 
     key := fmt.Sprintf("user:%s:online", userID)
     err = redis.RedisClient.Set(ctx, key, "1", time.Minute).Err()
@@ -42,6 +39,7 @@ func StatusHandler(w http.ResponseWriter, r *http.Request) {
             redis.ClientsMux.Lock()
             delete(redis.StatusClients, conn)
             redis.ClientsMux.Unlock()
+            log.Println("Status client disconnected")
 
             err := redis.RedisClient.Del(ctx, key).Err()
             if err != nil {
@@ -54,10 +52,10 @@ func StatusHandler(w http.ResponseWriter, r *http.Request) {
 
         for {
 			_, _, err := conn.ReadMessage()
-			if err != nil {
-				log.Println("WebSocket read error:", err)
-				break
-			}
+	        if err != nil {
+		        log.Println("WebSocket read error:", err)
+		        break
+	        }
 			redis.RedisClient.Publish(context.Background(), "status_channel", "")
 		}
     }()
