@@ -21,6 +21,7 @@ var (
 	MessageClients = make(map[*websocket.Conn]string)
     StatusClients = make(map[*websocket.Conn]string)
 	ClientsMux sync.Mutex
+    ctx = context.Background()
 )
 
 
@@ -31,7 +32,7 @@ func InitRedis() {
 }
 
 func StartRedisSubscriber() {
-    sub := RedisClient.Subscribe(context.Background(), "message_channel", "status_channel")
+    sub := RedisClient.Subscribe(ctx, "message_channel", "status_channel")
     ch := sub.Channel()
 
     fmt.Println("Redis subscriber listening on message_channel and status_channel")
@@ -47,6 +48,16 @@ func StartRedisSubscriber() {
             fmt.Println("Received message on unknown channel:", msg.Channel)
         }
     }
+}
+
+func StartStatusRebroadcast() {
+	ticker := time.NewTicker(time.Minute)
+	go func() {
+		for range ticker.C {
+			log.Println("Rebroadcasting user statuses...")
+			broadcastStatus()
+		}
+	}()
 }
 
 func broadcastMessage(message []byte) {
@@ -70,23 +81,26 @@ func broadcastMessage(message []byte) {
     }
 }
 
-func StartStatusRebroadcast() {
-	ticker := time.NewTicker(time.Minute)
-	go func() {
-		for range ticker.C {
-			log.Println("Rebroadcasting user statuses...")
-			broadcastStatus()
-		}
-	}()
+func broadcastStatus() {
+    ClientsMux.Lock()
+    defer ClientsMux.Unlock()
+
+    statusMsg := getStatusMsg()
+
+    for conn := range StatusClients {
+        if err := conn.WriteMessage(websocket.TextMessage, statusMsg); err != nil {
+            log.Println("WriteMessage error:", err)
+            conn.Close()
+            delete(StatusClients, conn)
+        }
+    }
 }
 
-func broadcastStatus() {
-    ctx := context.Background()
-
+func getStatusMsg() []byte {
     cursor, err := mongo.UserCollection.Find(ctx, bson.M{})
     if err != nil {
         log.Println("Mongo find error:", err)
-        return
+        return nil
     }
     defer cursor.Close(ctx)
 
@@ -112,17 +126,8 @@ func broadcastStatus() {
     data, err := json.Marshal(users)
     if err != nil {
         log.Println("JSON marshal error:", err)
-        return
+        return nil
     }
 
-    ClientsMux.Lock()
-    defer ClientsMux.Unlock()
-
-    for conn := range StatusClients {
-        if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-            log.Println("WriteMessage error:", err)
-            conn.Close()
-            delete(StatusClients, conn)
-        }
-    }
+    return data
 }
