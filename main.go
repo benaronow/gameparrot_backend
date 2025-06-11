@@ -25,11 +25,13 @@ func main() {
     mongo.InitMongo()
 
     go redis.StartRedisSubscriber()
+	go redis.StartStatusRebroadcast()
 
     http.HandleFunc("/auth", middleware.WithCORS(routes.AuthHandler))
     http.HandleFunc("/register", middleware.WithCORS(routes.RegisterHandler))
 	http.HandleFunc("/ws/message", middleware.WithCORS(ws.MessageHandler))
 	http.HandleFunc("/ws/status", middleware.WithCORS(ws.StatusHandler))
+	
     fmt.Println("WebSocket server running at :8080/ws")
     log.Fatal(http.ListenAndServe(":8080", nil))
 }
