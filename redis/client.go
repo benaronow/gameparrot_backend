@@ -18,8 +18,7 @@ import (
 
 var (
 	RedisClient *redis.Client
-	MessageClients = make(map[*websocket.Conn]string)
-    StatusClients = make(map[*websocket.Conn]string)
+	Clients = make(map[*websocket.Conn]string)
 	ClientsMux sync.Mutex
     ctx = context.Background()
 )
@@ -35,14 +34,14 @@ func StartRedisSubscriber() {
     sub := RedisClient.Subscribe(ctx, "message_channel", "status_channel")
     ch := sub.Channel()
 
-    fmt.Println("Redis subscriber listening on message_channel and status_channel")
+    fmt.Println("Redis subscriber listening on message and status channels")
 
     for msg := range ch {
         switch msg.Channel {
         case "message_channel":
             broadcastMessage([]byte(msg.Payload))
         case "status_channel":
-            fmt.Println("Received status update:", msg.Payload)
+            fmt.Println("Received status update")
             broadcastStatus()
         default:
             fmt.Println("Received message on unknown channel:", msg.Channel)
@@ -67,15 +66,15 @@ func broadcastMessage(message []byte) {
     var msgJson models.Message
 	if err := json.Unmarshal(message, &msgJson); err != nil {
 		log.Println("JSON decode error:", err)
-	}
+    }
 
-    for conn := range MessageClients {
-        if (MessageClients[conn] == msgJson.To) {
-            err := conn.WriteMessage(websocket.TextMessage, []byte(msgJson.Message))
+    for conn := range Clients {
+        if (Clients[conn] == msgJson.To) {
+            err := conn.WriteMessage(websocket.TextMessage, message)
             if err != nil {
                 log.Println("Broadcast error:", err)
                 conn.Close()
-                delete(MessageClients, conn)
+                delete(Clients, conn)
             }
         }
     }
@@ -85,18 +84,21 @@ func broadcastStatus() {
     ClientsMux.Lock()
     defer ClientsMux.Unlock()
 
-    statusMsg := getStatusMsg()
+    for conn := range Clients {
+        status := getStatus()
 
-    for conn := range StatusClients {
-        if err := conn.WriteMessage(websocket.TextMessage, statusMsg); err != nil {
+        statusMsgJson := models.Update{ Type: "status", Status: status}
+        statusMsg, msgErr := json.Marshal(statusMsgJson)
+
+        if err := conn.WriteMessage(websocket.TextMessage, statusMsg); err != nil || msgErr != nil {
             log.Println("WriteMessage error:", err)
             conn.Close()
-            delete(StatusClients, conn)
+            delete(Clients, conn)
         }
     }
-}
+} 
 
-func getStatusMsg() []byte {
+func getStatus() []models.User {
     cursor, err := mongo.UserCollection.Find(ctx, bson.M{})
     if err != nil {
         log.Println("Mongo find error:", err)
@@ -120,14 +122,16 @@ func getStatusMsg() []byte {
         }
         user.Online = (online == 1)
 
-        users = append(users, user)
+        users = append(users, abbrevUser(user))
     }
 
-    data, err := json.Marshal(users)
-    if err != nil {
-        log.Println("JSON marshal error:", err)
-        return nil
-    }
+    return users
+}
 
-    return data
+func abbrevUser(user models.User) models.User {
+    return models.User{
+        UID: user.UID,
+        Email: user.Email,
+        Online: user.Online,
+    }
 }
