@@ -74,7 +74,11 @@ func HandleWSConnection(w http.ResponseWriter, r *http.Request) {
 				case models.UpdateTypeMessage:
 					handleMessageUpdate(updateJson);
 					continue;
-				case models.UpdateTypeFriend:
+				case models.UpdateTypeFriendRequest:
+					handleFriendRequestUpdate(updateJson);
+					continue;
+				case models.UpdateTypeFriendAccept:
+					handleFriendAcceptUpdate(updateJson);
 					continue;
 				default:
 					continue;

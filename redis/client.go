@@ -31,17 +31,18 @@ func InitRedis() {
 }
 
 func StartRedisSubscriber() {
-    sub := RedisClient.Subscribe(ctx, "message_channel", "status_channel")
+    sub := RedisClient.Subscribe(ctx, "message_channel", "friend_request_channel", "friend_accept_channel", "status_channel")
     ch := sub.Channel()
-
-    fmt.Println("Redis subscriber listening on message and status channels")
 
     for msg := range ch {
         switch msg.Channel {
         case "message_channel":
             broadcastMessage([]byte(msg.Payload))
+        case "friend_request_channel":
+            broadcastFriendRequest([]byte(msg.Payload))
+        case "friend_accept_channel":
+            broadcastFriendAccept([]byte(msg.Payload))
         case "status_channel":
-            fmt.Println("Received status update")
             broadcastStatus()
         default:
             fmt.Println("Received message on unknown channel:", msg.Channel)
@@ -53,7 +54,6 @@ func StartStatusRebroadcast() {
 	ticker := time.NewTicker(time.Minute)
 	go func() {
 		for range ticker.C {
-			log.Println("Rebroadcasting user statuses...")
 			broadcastStatus()
 		}
 	}()
@@ -71,6 +71,50 @@ func broadcastMessage(message []byte) {
     for conn := range Clients {
         if (Clients[conn] == msgJson.To) {
             err := conn.WriteMessage(websocket.TextMessage, message)
+            if err != nil {
+                log.Println("Broadcast error:", err)
+                conn.Close()
+                delete(Clients, conn)
+            }
+        }
+    }
+}
+
+func broadcastFriendRequest(request []byte) {
+    ClientsMux.Lock()
+    defer ClientsMux.Unlock()
+
+    var reqJson models.FriendRequest
+    if err := json.Unmarshal(request, &reqJson); err != nil {
+        log.Println("JSON decode error:", err)
+        return
+    }
+
+    for conn := range Clients {
+        if (Clients[conn] == reqJson.To) {
+            err := conn.WriteMessage(websocket.TextMessage, request)
+            if err != nil {
+                log.Println("Broadcast error:", err)
+                conn.Close()
+                delete(Clients, conn)
+            }
+        }
+    }
+}
+
+func broadcastFriendAccept(request []byte) {
+    ClientsMux.Lock()
+    defer ClientsMux.Unlock()
+
+    var reqJson models.FriendRequest
+    if err := json.Unmarshal(request, &reqJson); err != nil {
+        log.Println("JSON decode error:", err)
+        return
+    }
+
+    for conn := range Clients {
+        if (Clients[conn] == reqJson.From) {
+            err := conn.WriteMessage(websocket.TextMessage, request)
             if err != nil {
                 log.Println("Broadcast error:", err)
                 conn.Close()

@@ -15,9 +15,6 @@ import (
 
 func handleMessageUpdate(update models.Update) {
 	message := updateToMessage(update);
-	fmt.Println(update.From);
-	fmt.Println(message.To);
-	fmt.Println(message.Message);
 
 	var fromUser models.User
 	err := mongoClient.UserCollection.FindOne(ctx, map[string]any{"uid": update.From}).Decode(&fromUser)
@@ -75,13 +72,5 @@ func handleMessageUpdate(update models.Update) {
 	} else {
 		redis.RedisClient.Publish(ctx, "status_channel", "")
 		redis.RedisClient.Publish(ctx, "message_channel", messageString)
-	}
-}
-
-func updateToMessage(update models.Update) models.Message {
-	return models.Message{
-		Message: update.Message,
-		From: update.From,
-		To: update.To,
 	}
 }

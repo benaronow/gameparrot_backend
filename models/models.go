@@ -11,10 +11,16 @@ type Friend struct {
     Messages []Message `bson:"messages" json:"messages"`
 }
 
+type FriendRequest struct {
+	From string `bson:"from" json:"from"`
+	To   string `bson:"to" json:"to"`
+}
+
 type User struct {
     UID string `bson:"uid" json:"uid"`
     Email string `bson:"email" json:"email"`
     Friends []Friend `bson:"friends" json:"friends"`
+	FriendRequests []FriendRequest `bson:"friend_requests" json:"friend_requests"`
     Online bool `json:"online"`
 }
 
@@ -22,7 +28,8 @@ type UpdateType string
 
 const (
 	UpdateTypeMessage UpdateType = "message"
-	UpdateTypeFriend UpdateType = "friend"
+	UpdateTypeFriendRequest UpdateType = "friend_request"
+	UpdateTypeFriendAccept UpdateType = "friend_accept"
 )
 
 type Update struct {

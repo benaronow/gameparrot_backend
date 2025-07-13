@@ -17,6 +17,8 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		newUser := map[string]any{
 			"uid":   token.UID,
 			"email": token.Claims["email"],
+			"friends": []any{},
+			"friend_requests": []any{},
 			"createdAt": token.IssuedAt,
 		}
 		_, err := mongoClient.UserCollection.InsertOne(ctx, newUser)
