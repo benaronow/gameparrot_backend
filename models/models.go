@@ -6,7 +6,7 @@ type Message struct {
 	To string `bson:"to" json:"to"`
 }
 
-type Friend struct {
+type Interaction struct {
     UID string `bson:"uid" json:"uid"`
     Messages []Message `bson:"messages" json:"messages"`
 }
@@ -19,7 +19,7 @@ type FriendRequest struct {
 type User struct {
     UID string `bson:"uid" json:"uid"`
     Email string `bson:"email" json:"email"`
-    Friends []Friend `bson:"friends" json:"friends"`
+    Interactions []Interaction `bson:"interactions" json:"interactions"`
 	FriendRequests []FriendRequest `bson:"friend_requests" json:"friend_requests"`
     Online bool `json:"online"`
 }

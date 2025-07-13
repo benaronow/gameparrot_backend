@@ -28,13 +28,13 @@ func handleFriendAcceptUpdate(update models.Update) {
 			break
 		}
 	}
-	fromUser.Friends = append(fromUser.Friends, models.Friend{
+	fromUser.Interactions = append(fromUser.Interactions, models.Interaction{
 		UID:     update.To,
 		Messages: []models.Message{},
 	})
 	fromUpdate := bson.M{
 		"$set": bson.M{
-			"friends": fromUser.Friends,
+			"interactions": fromUser.Interactions,
 			"friend_requests": fromUser.FriendRequests,
 		},
 	}
@@ -56,13 +56,13 @@ func handleFriendAcceptUpdate(update models.Update) {
 			break
 		}
 	}
-	toUser.Friends = append(toUser.Friends, models.Friend{
+	toUser.Interactions = append(toUser.Interactions, models.Interaction{
 		UID:     update.From,
 		Messages: []models.Message{},
 	})
 	toUpdate := bson.M{
 		"$set": bson.M{
-			"friends": toUser.Friends,
+			"interactions": toUser.Interactions,
 			"friend_requests": toUser.FriendRequests,
 		},
 	}
